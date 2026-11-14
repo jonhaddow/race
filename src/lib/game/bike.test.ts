@@ -84,6 +84,18 @@ describe('stepBody', () => {
 		expect(b.y).toBeCloseTo(h(1));
 	});
 
+	it('only hops when ridden onto the side of a ramp', () => {
+		const b = body();
+		stepBody(b, 0, 2.2, 1 / 60);
+		let top = b.y;
+		for (let i = 0; i < 300; i++) {
+			stepBody(b, 2.2, 2.2, 1 / 60);
+			top = Math.max(top, b.y);
+		}
+		expect(top).toBeLessThan(7);
+		expect(b.air).toBe(false);
+	});
+
 	it('flies off a ramp lip and lands about a second later', () => {
 		const b = body();
 		// Up a ramp at 6 m/s vertical, then the ground drops 2 m.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { stepRider, type Rider } from './ai.ts';
+import { pace, stepRider, type Rider } from './ai.ts';
 import { GRIP } from './bike.ts';
 import { CIRCUIT, ROAD_WIDTH, buildTrack, sample } from './track.ts';
 
@@ -72,5 +72,14 @@ describe('stepRider', () => {
 		};
 		for (let i = 0; i < 120; i++) stepRider(r, track, 1 / 60, 10);
 		expect(r.speed).toBeLessThan(11);
+	});
+});
+
+describe('pace', () => {
+	it('eases riders off ahead of the player and pushes ones far behind', () => {
+		expect(pace(60)).toBeLessThan(pace(20));
+		expect(pace(20)).toBeLessThan(pace(0));
+		expect(pace(0)).toBe(1);
+		expect(pace(-100)).toBeGreaterThan(1);
 	});
 });

@@ -2,6 +2,15 @@
 // and steering harder than the grip allows scrubs speed off by itself, so corners
 // work with the gas held. Grass slows it down, but not much.
 
+/** Up and down: riding over hills and flying off ramps. */
+export interface Body {
+	y: number;
+	vy: number;
+	air: boolean;
+	/** Seconds in the air on the current (or last) jump. */
+	airtime: number;
+}
+
 export interface Bike extends Body {
 	x: number;
 	z: number;
@@ -63,18 +72,11 @@ export function easeLean(lean: number, lateral: number, dt: number) {
 	return lean + (target - lean) * Math.min(1, dt * 8);
 }
 
-/** Up and down: riding over hills and flying off ramps. */
-export interface Body {
-	y: number;
-	vy: number;
-	air: boolean;
-	/** Seconds in the air on the current (or last) jump. */
-	airtime: number;
-}
-
 /** Floaty on purpose: about 1.2× Earth's, so jumps hang. */
 export const GRAVITY = 12;
 const STICK = 4;
+/** Fastest the ground can lift a bike, m/s: a ramp at top speed is about 7. */
+const MAX_CLIMB = 10;
 
 /**
  * Follows the ground from `from` to `to` (heights under the bike before and after
@@ -89,7 +91,8 @@ export function stepBody(b: Body, from: number, to: number, dt: number) {
 		// hill's crest, which would throw riders off mid-corner.
 		if (groundVy >= b.vy - STICK * GRAVITY * dt) {
 			b.y = to;
-			b.vy = groundVy;
+			// Capped: a sudden step up (riding onto a ramp's side) is a bump, not a launch.
+			b.vy = Math.min(groundVy, MAX_CLIMB);
 			return false;
 		}
 		b.air = true;

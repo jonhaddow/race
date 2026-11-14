@@ -1,8 +1,8 @@
 // The race: three computer riders and the player over LAPS laps, drawn with three.js.
 // The page shows `hud` and calls start/pause; everything else happens here.
 import * as THREE from 'three';
-import { stepRider, type Rider } from './ai.ts';
-import { stepBike, stepBody, type Bike } from './bike.ts';
+import { pace, stepRider, type Rider } from './ai.ts';
+import { stepBike, stepBody, type Bike, type Body } from './bike.ts';
 import { Input } from './input.ts';
 import { makeBike, type BikeModel } from './models.ts';
 import { LAPS, advance, lapsDone, order } from './race.ts';
@@ -341,11 +341,8 @@ export class Game {
 			// Hold back if the player is just ahead in this rider's path.
 			const gap = p.progress - r.progress;
 			const blocked = gap > 0 && gap < 5 && Math.abs(playerAt.lateral - r.lateral) < 1.3;
-			// Riders far ahead ease off and ones far behind push, so the race stays close.
-			const lead = r.progress - p.progress;
-			const pace = lead > 40 ? 0.8 : lead > 15 ? 0.92 : lead < -60 ? 1.08 : 1;
 			const from = groundHeight(this.track, r.progress);
-			stepRider(r, this.track, dt, blocked ? p.speed : undefined, pace);
+			stepRider(r, this.track, dt, blocked ? p.speed : undefined, pace(r.progress - p.progress));
 			stepBody(r, from, groundHeight(this.track, r.progress), dt);
 			if (r.finishedAt === undefined && r.progress >= LAPS * this.track.length)
 				r.finishedAt = this.hud.raceTime;
@@ -355,22 +352,19 @@ export class Game {
 	/** Moves the models to the bikes' positions. */
 	private place() {
 		const p = this.player;
-		this.pose(p.model, p.x, p.y, p.z, p.heading, p.lean, p.speed, p.vy);
+		this.pose(p.model, p.x, p.z, p.heading, p);
 		for (const r of this.riders) {
 			const at = pointAt(this.track, r.progress, r.lateral);
-			this.pose(r.model, at.x, r.y, at.z, at.heading, r.lean, r.speed, r.vy);
+			this.pose(r.model, at.x, at.z, at.heading, r);
 		}
 	}
 
 	private pose(
 		m: BikeModel,
 		x: number,
-		y: number,
 		z: number,
 		heading: number,
-		lean: number,
-		speed: number,
-		vy: number
+		{ y, vy, lean, speed }: Body & { lean: number; speed: number }
 	) {
 		m.root.position.set(x, y, z);
 		// Heading, then pitch (nose up climbing or flying up), then the lean inside.

@@ -58,3 +58,14 @@ export function stepRider(rider: Rider, track: Track, dt: number, blockedAt?: nu
 	// Positive curvature turns left, so the bike leans left (negative).
 	rider.lean = easeLean(rider.lean, -here * rider.speed * rider.speed, dt);
 }
+
+/**
+ * How hard a rider pushes, given how far they lead the player (metres, negative
+ * behind): riders far ahead ease off and ones far behind push, so the race stays close.
+ */
+export function pace(lead: number) {
+	if (lead > 40) return 0.8;
+	if (lead > 15) return 0.92;
+	if (lead < -60) return 1.08;
+	return 1;
+}

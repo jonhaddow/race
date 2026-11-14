@@ -57,7 +57,8 @@ function catmullRom(p0: P, p1: P, p2: P, p3: P, t: number): P {
 	return lerp(b1, b2, t1, t2);
 }
 
-export function buildTrack(control: P[], width: number, ramps: Ramp[] = [], spacing = 2): Track {
+export function buildTrack(control: P[], width: number, ramps: Ramp[] = []): Track {
+	const spacing = 2;
 	// A dense polyline first, then resampled at even spacing.
 	const dense: P[] = [];
 	const n = control.length;
