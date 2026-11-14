@@ -1,17 +1,20 @@
 // The race: three computer riders and the player over LAPS laps, drawn with three.js.
 // The page shows `hud` and calls start/pause; everything else happens here.
 import * as THREE from 'three';
-import { stepRider, type Rider } from './ai.ts';
-import { stepBike, type Bike } from './bike.ts';
+import { pace, stepRider, type Rider } from './ai.ts';
+import { stepBike, stepBody, type Bike, type Body } from './bike.ts';
 import { Input } from './input.ts';
 import { makeBike, type BikeModel } from './models.ts';
 import { LAPS, advance, lapsDone, order } from './race.ts';
 import {
 	CIRCUIT,
+	RAMPS,
 	ROAD_WIDTH,
 	buildTrack,
+	groundHeight,
 	locate,
 	pointAt,
+	roadHeight,
 	wrapAngle,
 	type Track
 } from './track.ts';
@@ -34,6 +37,8 @@ export interface Hud {
 	/** Set when the player finishes. */
 	result?: { position: number; time: number; bestLap: number; newRecord: boolean };
 	paused: boolean;
+	/** A cheer for a moment, e.g. after a big jump. */
+	flash?: string;
 }
 
 const COLOURS = [0xffd21f, 0xd8262e, 0x2f6fd6, 0x2bb673];
@@ -66,9 +71,9 @@ export class Game {
 	private scene = new THREE.Scene();
 	private camera = new THREE.PerspectiveCamera(65, 1, 0.1, 1400);
 	private sun = new THREE.DirectionalLight(0xffffff, 2.2);
-	private track: Track = buildTrack(CIRCUIT, ROAD_WIDTH);
+	private track: Track = buildTrack(CIRCUIT, ROAD_WIDTH, RAMPS);
 
-	private player!: Bike & Racer & { index: number; s: number };
+	private player!: Bike & Racer & { index: number; s: number; ground: number };
 	private riders: (Rider & Racer)[] = [];
 	private lapStart = 0;
 	private lapsCounted = 0;
@@ -76,6 +81,7 @@ export class Game {
 	private frame = 0;
 	private last = 0;
 	private clock = 0;
+	private flashUntil = 0;
 	private resize: ResizeObserver;
 
 	constructor(private canvas: HTMLCanvasElement) {
@@ -112,11 +118,12 @@ export class Game {
 	private setUp() {
 		for (const r of [...this.riders, this.player]) if (r) this.scene.remove(r.model.root);
 		const grid = (slot: number) => ({ progress: -6 - slot * 6, lateral: slot % 2 ? -2.5 : 2.5 });
-		this.riders = [0.93, 0.88, 0.83].map((skill, i) => {
+		const body = { y: 0, vy: 0, air: false, airtime: 0 };
+		this.riders = [0.88, 0.83, 0.78].map((skill, i) => {
 			const g = grid(i);
 			const model = makeBike(COLOURS[i + 1], i + 2);
 			this.scene.add(model.root);
-			return { id: i + 1, model, ...g, speed: 0, lean: 0, skill, lane: g.lateral };
+			return { id: i + 1, model, ...g, ...body, speed: 0, lean: 0, skill, lane: g.lateral };
 		});
 		const g = grid(3);
 		const p = pointAt(this.track, g.progress, g.lateral);
@@ -131,9 +138,11 @@ export class Game {
 			heading: p.heading,
 			speed: 0,
 			lean: 0,
+			...body,
 			progress: g.progress,
 			index: at.index,
-			s: at.s
+			s: at.s,
+			ground: 0
 		};
 		this.lapsCounted = 0;
 		this.setRecord = false;
@@ -148,6 +157,7 @@ export class Game {
 			lapTime: 0,
 			lastLap: undefined,
 			result: undefined,
+			flash: undefined,
 			bestLap: bestLap()
 		});
 		this.place();
@@ -209,6 +219,7 @@ export class Game {
 		}
 
 		hud.raceTime += dt;
+		if (hud.flash && hud.raceTime > this.flashUntil) hud.flash = undefined;
 		this.stepPlayer(dt);
 		this.stepRiders(dt);
 
@@ -229,6 +240,7 @@ export class Game {
 		const before = locate(this.track, p.x, p.z, p.index);
 		const c = hud.phase === 'racing' ? this.input.read(dt) : this.cruise(before.s, before.lateral);
 		const surface = Math.abs(before.lateral) > this.track.width / 2 + 0.6 ? 'grass' : 'road';
+		const from = this.groundAt(before.s, before.lateral);
 		stepBike(p, c, surface, dt);
 
 		let at = locate(this.track, p.x, p.z, p.index);
@@ -255,6 +267,10 @@ export class Game {
 			}
 		}
 
+		p.ground = this.groundAt(at.s, at.lateral);
+		const landed = stepBody(p, from, p.ground, dt);
+		if (landed && p.airtime > 0.7) this.cheer(p.airtime > 1.2 ? 'Huge air!' : 'Big air!');
+
 		p.progress = advance(this.track, p.progress, p.s, at.s);
 		p.s = at.s;
 		p.index = at.index;
@@ -273,6 +289,18 @@ export class Game {
 			if (done >= LAPS) this.finish();
 			else hud.lap = done + 1;
 		}
+	}
+
+	/** Under a bike: the ramps only span the road. */
+	private groundAt(s: number, lateral: number) {
+		return Math.abs(lateral) <= this.track.width / 2 + 0.5
+			? groundHeight(this.track, s)
+			: roadHeight(this.track, s);
+	}
+
+	private cheer(text: string) {
+		this.hud.flash = text;
+		this.flashUntil = this.hud.raceTime + 1.4;
 	}
 
 	/** After the flag the bike rides itself round, back to the centre of the road. */
@@ -313,7 +341,9 @@ export class Game {
 			// Hold back if the player is just ahead in this rider's path.
 			const gap = p.progress - r.progress;
 			const blocked = gap > 0 && gap < 5 && Math.abs(playerAt.lateral - r.lateral) < 1.3;
-			stepRider(r, this.track, dt, blocked ? p.speed : undefined);
+			const from = groundHeight(this.track, r.progress);
+			stepRider(r, this.track, dt, blocked ? p.speed : undefined, pace(r.progress - p.progress));
+			stepBody(r, from, groundHeight(this.track, r.progress), dt);
 			if (r.finishedAt === undefined && r.progress >= LAPS * this.track.length)
 				r.finishedAt = this.hud.raceTime;
 		}
@@ -322,16 +352,25 @@ export class Game {
 	/** Moves the models to the bikes' positions. */
 	private place() {
 		const p = this.player;
-		this.pose(p.model, p.x, p.z, p.heading, p.lean, p.speed);
+		this.pose(p.model, p.x, p.z, p.heading, p);
 		for (const r of this.riders) {
 			const at = pointAt(this.track, r.progress, r.lateral);
-			this.pose(r.model, at.x, at.z, at.heading, r.lean, r.speed);
+			this.pose(r.model, at.x, at.z, at.heading, r);
 		}
 	}
 
-	private pose(m: BikeModel, x: number, z: number, heading: number, lean: number, speed: number) {
-		m.root.position.set(x, 0, z);
+	private pose(
+		m: BikeModel,
+		x: number,
+		z: number,
+		heading: number,
+		{ y, vy, lean, speed }: Body & { lean: number; speed: number }
+	) {
+		m.root.position.set(x, y, z);
+		// Heading, then pitch (nose up climbing or flying up), then the lean inside.
+		m.root.rotation.order = 'YXZ';
 		m.root.rotation.y = heading;
+		m.root.rotation.x = -Math.max(-0.6, Math.min(0.6, Math.atan2(vy, Math.max(speed, 1))));
 		m.lean.rotation.z = lean;
 		// Rolling forward (+z) turns the tyre's top towards +z: a negative spin here.
 		for (const w of m.wheels) w.rotation.z -= (speed / 0.42) * (1 / 60);
@@ -346,8 +385,10 @@ export class Game {
 		const fx = Math.sin(p.heading);
 		const fz = Math.cos(p.heading);
 		const back = 5.5 + p.speed * 0.03;
-		const want = new THREE.Vector3(p.x - fx * back, 2.2, p.z - fz * back);
-		const look = new THREE.Vector3(p.x + fx * 6, 1.1, p.z + fz * 6);
+		// The camera only rises part way with a jump, so the bike flies up the screen.
+		const lift = p.ground + (p.y - p.ground) * 0.35;
+		const want = new THREE.Vector3(p.x - fx * back, lift + 2.4, p.z - fz * back);
+		const look = new THREE.Vector3(p.x + fx * 6, lift + 1.1, p.z + fz * 6);
 		const k = Math.min(1, dt * 7);
 		if (this.camPos.lengthSq() === 0 || k >= 1) {
 			this.camPos.copy(want);
@@ -359,7 +400,7 @@ export class Game {
 		this.camera.position.copy(this.camPos);
 		this.camera.up.set(-fz * p.lean * 0.12, 1, fx * p.lean * 0.12).normalize();
 		this.camera.lookAt(this.camLook);
-		this.followSun(p.x, p.z);
+		this.followSun(p.x, p.y, p.z);
 	}
 
 	/** Behind the menu: a slow circle round the grid. */
@@ -370,12 +411,12 @@ export class Game {
 		this.camera.up.set(0, 1, 0);
 		this.camera.lookAt(start.x, 1, start.z);
 		this.camPos.set(0, 0, 0);
-		this.followSun(start.x, start.z);
+		this.followSun(start.x, 0, start.z);
 	}
 
-	private followSun(x: number, z: number) {
-		this.sun.position.set(x + 60, 120, z + 40);
-		this.sun.target.position.set(x, 0, z);
+	private followSun(x: number, y: number, z: number) {
+		this.sun.position.set(x + 60, y + 120, z + 40);
+		this.sun.target.position.set(x, y, z);
 	}
 }
 

@@ -1,37 +1,44 @@
 // The circuit's scenery: grass, road with kerbs on the bends, the start line,
 // trees, grandstands and distant hills.
 import * as THREE from 'three';
-import { pointAt, type Track } from './track.ts';
+import { terrain, type Terrain } from './terrain.ts';
+import { pointAt, roadHeight, type Ramp, type Track } from './track.ts';
 
 export const SKY = 0x9fd3ff;
+const GRASS = 0x5f9e3a;
+/** The shaped ground covers this box; trees stay inside it. */
+const AREA = { x0: -400, x1: 900, z0: -720, z1: 720 };
 
 export function buildWorld(scene: THREE.Scene, track: Track) {
 	scene.background = new THREE.Color(SKY);
 	scene.fog = new THREE.Fog(SKY, 200, 950);
 
-	const ground = new THREE.Mesh(
-		new THREE.PlaneGeometry(2400, 2400),
-		new THREE.MeshLambertMaterial({ color: 0x5f9e3a })
+	const land = terrain(track);
+	scene.add(ground(land));
+	// Beyond the shaped ground, out to the horizon.
+	const far = new THREE.Mesh(
+		new THREE.PlaneGeometry(5000, 5000),
+		new THREE.MeshLambertMaterial({ color: GRASS })
 	);
-	ground.rotation.x = -Math.PI / 2;
-	ground.position.set(240, 0, 0);
-	ground.receiveShadow = true;
-	scene.add(ground);
+	far.rotation.x = -Math.PI / 2;
+	far.position.set(240, -1, 0);
+	scene.add(far);
 
 	scene.add(road(track));
 	scene.add(kerbs(track));
 	scene.add(startLine(track));
-	scene.add(trees(track));
-	scene.add(stands(track));
+	for (const r of track.ramps) scene.add(ramp(track, r));
+	scene.add(trees(track, land));
+	scene.add(stands(track, land));
 	scene.add(hills());
 }
 
-/** A strip along the track between two lateral offsets, one quad per sample. */
+/** A strip along the track between two lateral offsets, one quad per sample, `lift` above the road. */
 function strip(
 	track: Track,
 	from: number,
 	to: number,
-	y: number,
+	lift: number,
 	color: (i: number) => THREE.Color | null
 ) {
 	const pos: number[] = [];
@@ -46,8 +53,17 @@ function strip(
 		const b = pointAt(track, s0, to);
 		const c1 = pointAt(track, s1, from);
 		const d = pointAt(track, s1, to);
+		const y0 = roadHeight(track, s0) + lift;
+		const y1 = roadHeight(track, s1) + lift;
 		// Two triangles, facing up.
-		for (const p of [a, c1, b, b, c1, d]) {
+		for (const [p, y] of [
+			[a, y0],
+			[c1, y1],
+			[b, y0],
+			[b, y0],
+			[c1, y1],
+			[d, y1]
+		] as const) {
 			pos.push(p.x, y, p.z);
 			col.push(c.r, c.g, c.b);
 		}
@@ -109,7 +125,7 @@ function startLine(track: Track) {
 	const p = pointAt(track, 0);
 	line.rotation.x = -Math.PI / 2;
 	line.rotation.z = p.heading;
-	line.position.set(p.x, 0.035, p.z);
+	line.position.set(p.x, roadHeight(track, 0) + 0.035, p.z);
 	line.receiveShadow = true;
 
 	// A gantry over the line.
@@ -155,13 +171,14 @@ function clearOfTrack(track: Track, x: number, z: number, margin: number) {
 	return true;
 }
 
-function trees(track: Track) {
+function trees(track: Track, land: Terrain) {
 	const rand = random(7);
-	const spots: { x: number; z: number; scale: number }[] = [];
-	while (spots.length < 260) {
-		const x = -250 + rand() * 1000;
-		const z = -560 + rand() * 1120;
-		if (clearOfTrack(track, x, z, 18)) spots.push({ x, z, scale: 0.7 + rand() * 0.8 });
+	const spots: { x: number; z: number; y: number; scale: number }[] = [];
+	while (spots.length < 320) {
+		const x = AREA.x0 + 60 + rand() * (AREA.x1 - AREA.x0 - 120);
+		const z = AREA.z0 + 60 + rand() * (AREA.z1 - AREA.z0 - 120);
+		if (clearOfTrack(track, x, z, 18))
+			spots.push({ x, z, y: land.height(x, z), scale: 0.7 + rand() * 0.8 });
 	}
 	const crowns = new THREE.InstancedMesh(
 		new THREE.ConeGeometry(2.6, 7, 7),
@@ -177,8 +194,8 @@ function trees(track: Track) {
 	spots.forEach((t, i) => {
 		const s = new THREE.Vector3(t.scale, t.scale, t.scale);
 		const q = new THREE.Quaternion();
-		crowns.setMatrixAt(i, m.compose(new THREE.Vector3(t.x, 5.5 * t.scale, t.z), q, s));
-		trunks.setMatrixAt(i, m.compose(new THREE.Vector3(t.x, 1 * t.scale, t.z), q, s));
+		crowns.setMatrixAt(i, m.compose(new THREE.Vector3(t.x, t.y + 5.5 * t.scale, t.z), q, s));
+		trunks.setMatrixAt(i, m.compose(new THREE.Vector3(t.x, t.y + 1 * t.scale, t.z), q, s));
 	});
 	crowns.castShadow = true;
 	const group = new THREE.Group();
@@ -186,7 +203,7 @@ function trees(track: Track) {
 	return group;
 }
 
-function stands(track: Track) {
+function stands(track: Track, land: Terrain) {
 	const group = new THREE.Group();
 	const seats = new THREE.MeshLambertMaterial({ color: 0xc9ccd1 });
 	const roof = new THREE.MeshLambertMaterial({ color: 0xffd21f });
@@ -217,7 +234,7 @@ function stands(track: Track) {
 		const top = new THREE.Mesh(new THREE.BoxGeometry(42, 0.4, 10), roof);
 		top.position.set(0, 8, -3);
 		stand.add(top);
-		stand.position.set(p.x, 0, p.z);
+		stand.position.set(p.x, land.height(p.x, p.z), p.z);
 		// Facing the track: its front (+z) towards the road on the left of travel.
 		stand.rotation.y = p.heading - Math.PI / 2;
 		group.add(stand);
@@ -231,13 +248,92 @@ function hills() {
 	const rand = random(11);
 	for (let i = 0; i < 18; i++) {
 		const a = (i / 18) * Math.PI * 2;
-		const r = 720 + rand() * 120;
+		const r = 900 + rand() * 150;
 		const hill = new THREE.Mesh(
 			new THREE.ConeGeometry(120 + rand() * 120, 60 + rand() * 90, 6),
 			mat
 		);
-		hill.position.set(240 + Math.cos(a) * r, 20, Math.sin(a) * r);
+		hill.position.set(240 + Math.cos(a) * r, 25, Math.sin(a) * r);
 		group.add(hill);
 	}
 	return group;
+}
+
+/** The shaped ground: a grid following the terrain, shaded a little by height. */
+function ground(land: Terrain) {
+	const step = 8;
+	const nx = Math.round((AREA.x1 - AREA.x0) / step);
+	const nz = Math.round((AREA.z1 - AREA.z0) / step);
+	const geo = new THREE.PlaneGeometry(AREA.x1 - AREA.x0, AREA.z1 - AREA.z0, nx, nz);
+	geo.rotateX(-Math.PI / 2);
+	geo.translate((AREA.x0 + AREA.x1) / 2, 0, (AREA.z0 + AREA.z1) / 2);
+	const pos = geo.attributes.position;
+	const colors: number[] = [];
+	const low = new THREE.Color(0x5a9a36);
+	const high = new THREE.Color(0x86bd4f);
+	const c = new THREE.Color();
+	for (let i = 0; i < pos.count; i++) {
+		const x = pos.getX(i);
+		const z = pos.getZ(i);
+		// The edges sink to meet the flat plane beyond.
+		const edge = Math.min(x - AREA.x0, AREA.x1 - x, z - AREA.z0, AREA.z1 - z);
+		const y = edge < step ? -1 : land.height(x, z);
+		pos.setY(i, y);
+		c.lerpColors(low, high, Math.max(0, Math.min(1, y / 18)));
+		colors.push(c.r, c.g, c.b);
+	}
+	geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+	geo.computeVertexNormals();
+	const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true }));
+	mesh.receiveShadow = true;
+	return mesh;
+}
+
+/** A kicker: a yellow and black striped wedge across the road. */
+function ramp(track: Track, r: Ramp) {
+	const pos: number[] = [];
+	const col: number[] = [];
+	const yellow = new THREE.Color(0xffd21f);
+	const black = new THREE.Color(0x1d1f23);
+	const side = new THREE.Color(0xc9a514);
+	const w = track.width / 2;
+	type V = { x: number; y: number; z: number };
+	const tri = (a: V, b: V, c: V, colour: THREE.Color) => {
+		for (const p of [a, b, c]) {
+			pos.push(p.x, p.y, p.z);
+			col.push(colour.r, colour.g, colour.b);
+		}
+	};
+	const quad = (a: V, b: V, c: V, d: V, colour: THREE.Color) => {
+		tri(a, b, c, colour);
+		tri(c, b, d, colour);
+	};
+	const at = (s: number, lateral: number, up: number): V => {
+		const p = pointAt(track, s, lateral);
+		return { x: p.x, y: roadHeight(track, s) + up, z: p.z };
+	};
+	const start = r.s - r.length;
+	const steps = Math.round(r.length);
+	for (let k = 0; k < steps; k++) {
+		const s0 = start + (k * r.length) / steps;
+		const s1 = start + ((k + 1) * r.length) / steps;
+		const h0 = (r.height * (s0 - start)) / r.length + 0.04;
+		const h1 = (r.height * (s1 - start)) / r.length + 0.04;
+		quad(at(s0, -w, h0), at(s1, -w, h1), at(s0, w, h0), at(s1, w, h1), k % 4 < 2 ? yellow : black);
+		quad(at(s0, -w, 0), at(s1, -w, 0), at(s0, -w, h0), at(s1, -w, h1), side);
+		quad(at(s0, w, 0), at(s1, w, 0), at(s0, w, h0), at(s1, w, h1), side);
+	}
+	const top = r.height + 0.04;
+	quad(at(r.s, -w, 0), at(r.s, w, 0), at(r.s, -w, top), at(r.s, w, top), black);
+	const geo = new THREE.BufferGeometry();
+	geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+	geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+	geo.computeVertexNormals();
+	const mesh = new THREE.Mesh(
+		geo,
+		new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide })
+	);
+	mesh.castShadow = true;
+	mesh.receiveShadow = true;
+	return mesh;
 }

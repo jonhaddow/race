@@ -1,6 +1,6 @@
 # Race
 
-A 3D motorbike racing game that runs in the browser. Three laps of a 2 km circuit against three computer riders, steering by tilting your phone, or with the keyboard on a computer.
+A 3D motorbike racing game that runs in the browser. Three laps of a hilly 2 km circuit with jumps, against three computer riders, steering by tilting your phone, or with the keyboard on a computer.
 
 ## Playing
 
