@@ -1,6 +1,16 @@
-// Steering by tilting the phone like a steering wheel, from the gravity reported
-// by devicemotion (accelerationIncludingGravity, which points up, away from the
-// ground). Works however far back the phone is tipped.
+// Steering by tilting the phone like a steering wheel, from deviceorientation's
+// beta and gamma (see CLAUDE.md for why not devicemotion). Works however far back
+// the phone is tipped.
+
+/**
+ * The direction away from the ground in the phone's own axes (x right, y to its
+ * top, z out of the screen), from deviceorientation's beta and gamma in degrees.
+ */
+export function upFromOrientation(beta: number, gamma: number): [number, number, number] {
+	const b = (beta * Math.PI) / 180;
+	const g = (gamma * Math.PI) / 180;
+	return [-Math.sin(g) * Math.cos(b), Math.sin(b), Math.cos(g) * Math.cos(b)];
+}
 
 /** Tilt that gives full lock, in radians. */
 const FULL_LOCK = (25 * Math.PI) / 180;
@@ -8,6 +18,7 @@ const DEAD_ZONE = (2 * Math.PI) / 180;
 
 /**
  * The phone's roll from upright in the current screen orientation, in radians,
+ * given the up vector in the phone's axes;
  * positive with its right-hand edge (as the screen is shown) tipped down.
  * `angle` is screen.orientation.angle: 0, 90, 180 or 270.
  */

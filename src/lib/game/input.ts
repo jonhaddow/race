@@ -1,6 +1,6 @@
 // Turns keys, the on-screen pedals and tilt into Controls.
 import type { Controls } from './bike.ts';
-import { roll, steerFromRoll } from './tilt.ts';
+import { roll, steerFromRoll, upFromOrientation } from './tilt.ts';
 
 export class Input {
 	/** Set by the on-screen buttons. */
@@ -22,23 +22,23 @@ export class Input {
 		if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
 	};
 
-	private onMotion = (e: DeviceMotionEvent) => {
-		const g = e.accelerationIncludingGravity;
-		if (g?.x == null || g.y == null || g.z == null) return;
-		this.roll = roll(g.x, g.y, g.z, screenAngle());
+	private onOrientation = (e: DeviceOrientationEvent) => {
+		if (e.beta == null || e.gamma == null) return;
+		const [x, y, z] = upFromOrientation(e.beta, e.gamma);
+		this.roll = roll(x, y, z, screenAngle());
 	};
 
 	attach() {
 		addEventListener('keydown', this.onKey);
 		addEventListener('keyup', this.onKey);
-		addEventListener('devicemotion', this.onMotion);
+		addEventListener('deviceorientation', this.onOrientation);
 		addEventListener('blur', this.release);
 	}
 
 	detach() {
 		removeEventListener('keydown', this.onKey);
 		removeEventListener('keyup', this.onKey);
-		removeEventListener('devicemotion', this.onMotion);
+		removeEventListener('deviceorientation', this.onOrientation);
 		removeEventListener('blur', this.release);
 	}
 
@@ -85,8 +85,10 @@ function screenAngle() {
  * Resolves whether tilt may work.
  */
 export async function askForMotion() {
-	const Motion = globalThis.DeviceMotionEvent as
-		| (typeof DeviceMotionEvent & { requestPermission?: () => Promise<'granted' | 'denied'> })
+	const Motion = globalThis.DeviceOrientationEvent as
+		| (typeof DeviceOrientationEvent & {
+				requestPermission?: () => Promise<'granted' | 'denied'>;
+		  })
 		| undefined;
 	if (!Motion) return false;
 	if (!Motion.requestPermission) return true;
