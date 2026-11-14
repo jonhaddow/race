@@ -9,5 +9,5 @@ A 3D motorbike racing game at https://race.app.haddow.me: three.js in a SvelteKi
 - Tilt comes from `deviceorientation` (beta, gamma) relative to the screen orientation, not `devicemotion` (its gravity signs are flipped on iOS, which steered backwards there). It is calibrated to however the phone is held during the countdown. iOS needs `requestPermission` from a tap (the Start button).
 - Game time slows below 20 fps (dt is capped at 0.05). Headless Chromium renders WebGL in software, so e2e runs at deviceScaleFactor 1.
 - Tuning: rival skills are in `Game.setUp` (0.93/0.88/0.83 of the ideal pace), and grip and top speed are in `bike.ts`.
-- The page sends `Permissions-Policy: accelerometer=(self)` (`hooks.server.ts`), which tilt needs.
+- The page sends `Permissions-Policy: accelerometer=(self), gyroscope=(self)` (`hooks.server.ts`), which tilt needs.
 - Screenshots: `node`/Playwright with `--enable-unsafe-swiftshader --use-angle=swiftshader` (see `playwright.config.ts`). `scripts/shot.sh` isn't here since there's no sign-in.

@@ -1,7 +1,6 @@
-// Steering by tilting the phone like a steering wheel. The "up" vector comes from
-// deviceorientation's beta and gamma, which iOS and Android report the same way
-// (devicemotion's accelerationIncludingGravity has opposite signs on iOS, which
-// steered backwards there). Works however far back the phone is tipped.
+// Steering by tilting the phone like a steering wheel, from deviceorientation's
+// beta and gamma (see CLAUDE.md for why not devicemotion). Works however far back
+// the phone is tipped.
 
 /**
  * The direction away from the ground in the phone's own axes (x right, y to its
@@ -18,7 +17,8 @@ const FULL_LOCK = (25 * Math.PI) / 180;
 const DEAD_ZONE = (2 * Math.PI) / 180;
 
 /**
- * From the up vector in the phone's axes: its roll from upright in the current screen orientation, in radians,
+ * The phone's roll from upright in the current screen orientation, in radians,
+ * given the up vector in the phone's axes;
  * positive with its right-hand edge (as the screen is shown) tipped down.
  * `angle` is screen.orientation.angle: 0, 90, 180 or 270.
  */

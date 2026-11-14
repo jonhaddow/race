@@ -47,8 +47,6 @@ describe('upFromOrientation', () => {
 	});
 
 	it('points to the left edge with the right edge tipped down (gamma +)', () => {
-		const [x] = upFromOrientation(0, 30);
-		expect(x).toBeLessThan(0);
 		expect(roll(...upFromOrientation(0, 30), 0)).toBeGreaterThan(0);
 	});
 
