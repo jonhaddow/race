@@ -1,0 +1,18 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "race",
+	"compatibility_date": "2026-11-01",
+	"compatibility_flags": ["nodejs_als"],
+	"main": ".svelte-kit/cloudflare/_worker.js",
+	"assets": {
+		"binding": "ASSETS",
+		"directory": ".svelte-kit/cloudflare"
+	},
+	"workers_dev": false,
+	"routes": [{ "pattern": "race.app.haddow.me", "custom_domain": true }],
+	// Keeps request logs and console output (Workers Logs, free tier) for debugging.
+	"observability": {
+		"enabled": true
+	},
+	"preview_urls": false
+}
