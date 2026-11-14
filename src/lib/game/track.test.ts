@@ -15,6 +15,8 @@ describe('circuit', () => {
 		expect(start.x).toBeCloseTo(0, 0);
 		expect(start.z).toBeCloseTo(-120, 0);
 		expect(start.heading).toBeCloseTo(0, 1);
+		// Straight from the grid to past the first ramp.
+		for (let d = -40; d <= 110; d += 10) expect(pointAt(track, d).heading).toBeCloseTo(0, 2);
 	});
 
 	it('has no bend too tight to ride (radius under 20 m)', () => {

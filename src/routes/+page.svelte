@@ -116,7 +116,7 @@
 {#if !hud || hud.phase === 'menu'}
 	<section class="menu">
 		<h1>Race<span>.</span></h1>
-		<p class="tag">Three laps. Three rivals. One line.</p>
+		<p class="tag">Three laps. Big hills. Bigger jumps.</p>
 		<button class="go" onclick={start} disabled={!hud}>{hud ? 'Start race' : 'Loading…'}</button>
 		<p class="help">
 			{#if touch}
@@ -149,6 +149,10 @@
 			<strong>{hud.speedKmh}</strong><small>km/h</small>
 		</div>
 	</div>
+
+	{#if hud.flash}
+		<div class="cheer" aria-live="polite">{hud.flash}</div>
+	{/if}
 
 	{#if hud.phase === 'countdown'}
 		<div class="count" aria-live="polite">{Math.ceil(hud.countdown)}</div>
