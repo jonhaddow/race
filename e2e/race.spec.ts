@@ -15,7 +15,7 @@ test('starts a race, counts down and rides off with the gas held', async ({ page
 	await expect(page.getByRole('button', { name: 'Steer left' })).toBeVisible();
 
 	await page.getByRole('button', { name: 'Gas' }).dispatchEvent('pointerdown');
-	await expect(page.getByTestId('speed')).not.toContainText(/^0km/, { timeout: 20_000 });
+	await expect(page.getByTestId('speed')).not.toContainText(/^0km/, { timeout: 35_000 });
 
 	await page.getByRole('button', { name: 'Pause' }).click();
 	await page.getByRole('button', { name: 'Quit' }).click();

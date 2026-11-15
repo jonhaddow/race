@@ -1,12 +1,15 @@
-// The circuit's scenery: grass, road with kerbs on the bends, the start line,
-// trees, grandstands and distant hills.
+// The circuit's scenery: a street circuit through a city. The road has a pavement
+// each side ending in a barrier (the wall bikes glance off, see game.ts), with
+// buildings behind, the start line, grandstands and distant hills.
 import * as THREE from 'three';
 import { terrain, type Terrain } from './terrain.ts';
 import { pointAt, roadHeight, type Ramp, type Track } from './track.ts';
 
 export const SKY = 0x9fd3ff;
-const GRASS = 0x5f9e3a;
-/** The shaped ground covers this box; trees stay inside it. */
+/** Metres from the road's edge to the wall. */
+export const PAVEMENT = 3;
+const CONCRETE = 0x8d9096;
+/** The shaped ground covers this box; buildings stay inside it. */
 const AREA = { x0: -400, x1: 900, z0: -720, z1: 720 };
 
 export function buildWorld(scene: THREE.Scene, track: Track) {
@@ -18,18 +21,19 @@ export function buildWorld(scene: THREE.Scene, track: Track) {
 	// Beyond the shaped ground, out to the horizon.
 	const far = new THREE.Mesh(
 		new THREE.PlaneGeometry(5000, 5000),
-		new THREE.MeshLambertMaterial({ color: GRASS })
+		new THREE.MeshLambertMaterial({ color: CONCRETE })
 	);
 	far.rotation.x = -Math.PI / 2;
 	far.position.set(240, -1, 0);
 	scene.add(far);
 
 	scene.add(road(track));
-	scene.add(kerbs(track));
+	scene.add(pavements(track));
+	scene.add(barriers(track));
 	scene.add(startLine(track));
 	for (const r of track.ramps) scene.add(ramp(track, r));
-	scene.add(trees(track, land));
-	scene.add(stands(track, land));
+	scene.add(buildings(track, land));
+	scene.add(stands(track));
 	scene.add(hills());
 }
 
@@ -93,18 +97,6 @@ function road(track: Track) {
 	return group;
 }
 
-function kerbs(track: Track) {
-	const red = new THREE.Color(0xd8262e);
-	const white = new THREE.Color(0xffffff);
-	const w = track.width / 2;
-	const onBend = (i: number) => Math.abs(track.points[i].curvature) > 1 / 140;
-	const color = (i: number) => (onBend(i) ? (Math.floor(i / 2) % 2 ? red : white) : null);
-	const group = new THREE.Group();
-	group.add(strip(track, -w - 1.2, -w, 0.025, color));
-	group.add(strip(track, w, w + 1.2, 0.025, color));
-	return group;
-}
-
 function startLine(track: Track) {
 	const c = document.createElement('canvas');
 	c.width = 128;
@@ -162,48 +154,237 @@ function random(seed: number) {
 	};
 }
 
-function clearOfTrack(track: Track, x: number, z: number, margin: number) {
-	const min = (track.width / 2 + margin) ** 2;
-	for (let i = 0; i < track.points.length; i += 2) {
-		const p = track.points[i];
-		if ((p.x - x) ** 2 + (p.z - z) ** 2 < min) return false;
-	}
-	return true;
-}
-
-function trees(track: Track, land: Terrain) {
-	const rand = random(7);
-	const spots: { x: number; z: number; y: number; scale: number }[] = [];
-	while (spots.length < 320) {
-		const x = AREA.x0 + 60 + rand() * (AREA.x1 - AREA.x0 - 120);
-		const z = AREA.z0 + 60 + rand() * (AREA.z1 - AREA.z0 - 120);
-		if (clearOfTrack(track, x, z, 18))
-			spots.push({ x, z, y: land.height(x, z), scale: 0.7 + rand() * 0.8 });
-	}
-	const crowns = new THREE.InstancedMesh(
-		new THREE.ConeGeometry(2.6, 7, 7),
-		new THREE.MeshLambertMaterial({ color: 0x2f6b2a }),
-		spots.length
-	);
-	const trunks = new THREE.InstancedMesh(
-		new THREE.CylinderGeometry(0.35, 0.45, 2, 6),
-		new THREE.MeshLambertMaterial({ color: 0x6b4a2b }),
-		spots.length
-	);
-	const m = new THREE.Matrix4();
-	spots.forEach((t, i) => {
-		const s = new THREE.Vector3(t.scale, t.scale, t.scale);
-		const q = new THREE.Quaternion();
-		crowns.setMatrixAt(i, m.compose(new THREE.Vector3(t.x, t.y + 5.5 * t.scale, t.z), q, s));
-		trunks.setMatrixAt(i, m.compose(new THREE.Vector3(t.x, t.y + 1 * t.scale, t.z), q, s));
-	});
-	crowns.castShadow = true;
+function pavements(track: Track) {
+	const w = track.width / 2;
+	const slab = new THREE.Color(0xb9bbbe);
+	const kerb = new THREE.Color(0xe4e4e0);
 	const group = new THREE.Group();
-	group.add(crowns, trunks);
+	for (const side of [-1, 1]) {
+		const [a, b] = side < 0 ? [-w - PAVEMENT - 0.5, -w] : [w, w + PAVEMENT + 0.5];
+		group.add(strip(track, a, b, 0.025, () => slab));
+		group.add(strip(track, side * w, side * (w + 0.4), 0.03, () => kerb));
+	}
 	return group;
 }
 
-function stands(track: Track, land: Terrain) {
+/** Red and white blocks just past the wall's line, with a little room for the bike. */
+function barriers(track: Track) {
+	const w = track.width / 2 + PAVEMENT + 0.5;
+	const height = 1.1;
+	const red = new THREE.Color(0xd8262e);
+	const white = new THREE.Color(0xf2f2f2);
+	const pos: number[] = [];
+	const col: number[] = [];
+	const n = track.points.length;
+	for (const side of [-1, 1]) {
+		for (let i = 0; i < n; i++) {
+			const c = Math.floor(i / 2) % 2 ? red : white;
+			const s0 = i * track.ds;
+			const s1 = s0 + track.ds;
+			const y0 = roadHeight(track, s0);
+			const y1 = roadHeight(track, s1);
+			const corner = (s: number, lateral: number, y: number) => {
+				const p = pointAt(track, s, side * lateral);
+				return [p.x, y, p.z];
+			};
+			// Inner face, top and back.
+			const faces = [
+				[
+					corner(s0, w, y0 - 1),
+					corner(s1, w, y1 - 1),
+					corner(s0, w, y0 + height),
+					corner(s1, w, y1 + height)
+				],
+				[
+					corner(s0, w, y0 + height),
+					corner(s1, w, y1 + height),
+					corner(s0, w + 0.6, y0 + height),
+					corner(s1, w + 0.6, y1 + height)
+				],
+				[
+					corner(s0, w + 0.6, y0 + height),
+					corner(s1, w + 0.6, y1 + height),
+					corner(s0, w + 0.6, y0 - 1),
+					corner(s1, w + 0.6, y1 - 1)
+				]
+			];
+			for (const [a, b, cc, d] of faces)
+				for (const v of [a, b, cc, cc, b, d]) {
+					pos.push(...v);
+					col.push(c.r, c.g, c.b);
+				}
+		}
+	}
+	const geo = new THREE.BufferGeometry();
+	geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+	geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+	geo.computeVertexNormals();
+	const mesh = new THREE.Mesh(
+		geo,
+		new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide })
+	);
+	mesh.castShadow = true;
+	mesh.receiveShadow = true;
+	return mesh;
+}
+
+/** Whether every point is at least `margin` metres beyond the road's edge. */
+function clearOfTrack(track: Track, points: { x: number; z: number }[], margin: number) {
+	const min = (track.width / 2 + margin) ** 2;
+	for (const p of track.points)
+		for (const q of points) if ((p.x - q.x) ** 2 + (p.z - q.z) ** 2 < min) return false;
+	return true;
+}
+
+interface Block {
+	x: number;
+	z: number;
+	/** Rotation about y: its depth runs along (sin, cos) of it. */
+	angle: number;
+	width: number;
+	depth: number;
+	height: number;
+	color: THREE.Color;
+}
+
+const FACADES = [
+	0xe6d3a8, 0xc8714f, 0x9fb7c9, 0xf1eee6, 0xe0b04a, 0x8c9aa6, 0xb95f5f, 0xa7c49a
+].map((c) => new THREE.Color(c));
+
+/** Corners of a block's footprint. */
+function footprint(b: Block) {
+	const fx = Math.sin(b.angle);
+	const fz = Math.cos(b.angle);
+	return [
+		[-1, -1],
+		[-1, 1],
+		[1, 1],
+		[1, -1]
+	].map(([u, v]) => ({
+		x: b.x + (u * b.width * fz) / 2 + (v * b.depth * fx) / 2,
+		z: b.z - (u * b.width * fx) / 2 + (v * b.depth * fz) / 2
+	}));
+}
+
+/**
+ * The city: a row of buildings facing the street just behind each barrier, and
+ * blocks on a grid filling the rest.
+ */
+function buildings(track: Track, land: Terrain) {
+	const rand = random(7);
+	const blocks: Block[] = [];
+	const pick = () => FACADES[Math.floor(rand() * FACADES.length)];
+	const front = track.width / 2 + PAVEMENT + 1.5;
+	// The grandstands line the left of the start straight.
+	const stands = (s: number) => s > track.length - 90 || s < 70;
+
+	for (const side of [-1, 1]) {
+		let s = 0;
+		while (s < track.length) {
+			const width = 10 + rand() * 12;
+			const depth = 10 + rand() * 10;
+			const mid = s + width / 2;
+			s += width + rand() * 2;
+			if (side < 0 && stands(mid)) continue;
+			const p = pointAt(track, mid, side * (front + depth / 2));
+			const b = {
+				x: p.x,
+				z: p.z,
+				angle: p.heading + Math.PI / 2,
+				width,
+				depth,
+				height: 8 + rand() * 22,
+				color: pick()
+			};
+			if (clearOfTrack(track, [...footprint(b), b], PAVEMENT + 1)) blocks.push(b);
+		}
+	}
+
+	const cell = 36;
+	for (let x = AREA.x0 + cell; x < AREA.x1 - cell; x += cell)
+		for (let z = AREA.z0 + cell; z < AREA.z1 - cell; z += cell) {
+			const size = 14 + rand() * 14;
+			const b = {
+				x: x + (rand() - 0.5) * 4,
+				z: z + (rand() - 0.5) * 4,
+				angle: 0,
+				width: size,
+				depth: 14 + rand() * 14,
+				// Taller towards the middle of town.
+				height: 10 + rand() * (20 + 50 * Math.exp(-((x - 240) ** 2 + z ** 2) / 300 ** 2)),
+				color: pick()
+			};
+			if (clearOfTrack(track, footprint(b), 26)) blocks.push(b);
+		}
+
+	// Walls (with windows) and roofs, each one mesh.
+	const walls = { pos: [] as number[], col: [] as number[], uv: [] as number[] };
+	const roofs = { pos: [] as number[], col: [] as number[], uv: [] as number[] };
+	const roofTint = new THREE.Color(0x5b5f66);
+	for (const b of blocks) {
+		const corners = footprint(b);
+		const heights = corners.map((c) => land.height(c.x, c.z));
+		// Sunk into the slope, so no corner floats.
+		const base = Math.min(...heights) - 2;
+		const top = Math.max(...heights) + b.height;
+		for (let k = 0; k < 4; k++) {
+			const a = corners[k];
+			const c = corners[(k + 1) % 4];
+			const len = Math.hypot(c.x - a.x, c.z - a.z);
+			const u = Math.round(len / 4);
+			const v = (top - base) / 3.5;
+			const quad = [
+				[a.x, base, a.z, 0, 0],
+				[c.x, base, c.z, u, 0],
+				[a.x, top, a.z, 0, v],
+				[a.x, top, a.z, 0, v],
+				[c.x, base, c.z, u, 0],
+				[c.x, top, c.z, u, v]
+			];
+			for (const [x, y, z, tu, tv] of quad) {
+				walls.pos.push(x, y, z);
+				walls.col.push(b.color.r, b.color.g, b.color.b);
+				walls.uv.push(tu, tv);
+			}
+		}
+		for (const i of [0, 1, 2, 0, 2, 3]) {
+			roofs.pos.push(corners[i].x, top, corners[i].z);
+			roofs.col.push(roofTint.r, roofTint.g, roofTint.b);
+			roofs.uv.push(0, 0);
+		}
+	}
+	const mesh = (m: typeof walls, map?: THREE.Texture) => {
+		const geo = new THREE.BufferGeometry();
+		geo.setAttribute('position', new THREE.Float32BufferAttribute(m.pos, 3));
+		geo.setAttribute('color', new THREE.Float32BufferAttribute(m.col, 3));
+		geo.setAttribute('uv', new THREE.Float32BufferAttribute(m.uv, 2));
+		geo.computeVertexNormals();
+		const out = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, map }));
+		out.castShadow = true;
+		return out;
+	};
+	const group = new THREE.Group();
+	group.add(mesh(walls, windows()), mesh(roofs));
+	return group;
+}
+
+/** One 4 m by 3.5 m bay of a facade: white wall (tinted per building) round a window. */
+function windows() {
+	const c = document.createElement('canvas');
+	c.width = c.height = 64;
+	const g = c.getContext('2d')!;
+	g.fillStyle = '#fff';
+	g.fillRect(0, 0, 64, 64);
+	g.fillStyle = '#3d5a7a';
+	g.fillRect(14, 14, 36, 34);
+	g.fillStyle = '#7fa6c9';
+	g.fillRect(14, 14, 36, 8);
+	const tex = new THREE.CanvasTexture(c);
+	tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+	tex.colorSpace = THREE.SRGBColorSpace;
+	return tex;
+}
+function stands(track: Track) {
 	const group = new THREE.Group();
 	const seats = new THREE.MeshLambertMaterial({ color: 0xc9ccd1 });
 	const roof = new THREE.MeshLambertMaterial({ color: 0xffd21f });
@@ -215,7 +396,7 @@ function stands(track: Track, land: Terrain) {
 		const p = pointAt(
 			track,
 			((s % track.length) + track.length) % track.length,
-			-track.width / 2 - 14
+			-track.width / 2 - PAVEMENT - 2
 		);
 		const stand = new THREE.Group();
 		for (let row = 0; row < 4; row++) {
@@ -234,7 +415,7 @@ function stands(track: Track, land: Terrain) {
 		const top = new THREE.Mesh(new THREE.BoxGeometry(42, 0.4, 10), roof);
 		top.position.set(0, 8, -3);
 		stand.add(top);
-		stand.position.set(p.x, land.height(p.x, p.z), p.z);
+		stand.position.set(p.x, roadHeight(track, s), p.z);
 		// Facing the track: its front (+z) towards the road on the left of travel.
 		stand.rotation.y = p.heading - Math.PI / 2;
 		group.add(stand);
@@ -269,8 +450,8 @@ function ground(land: Terrain) {
 	geo.translate((AREA.x0 + AREA.x1) / 2, 0, (AREA.z0 + AREA.z1) / 2);
 	const pos = geo.attributes.position;
 	const colors: number[] = [];
-	const low = new THREE.Color(0x5a9a36);
-	const high = new THREE.Color(0x86bd4f);
+	const low = new THREE.Color(0x868a90);
+	const high = new THREE.Color(0xa3a59f);
 	const c = new THREE.Color();
 	for (let i = 0; i < pos.count; i++) {
 		const x = pos.getX(i);

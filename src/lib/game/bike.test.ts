@@ -5,8 +5,8 @@ import {
 	stepBody,
 	type Bike,
 	type Body,
-	type Controls,
-	type Surface
+	glance,
+	type Controls
 } from './bike.ts';
 
 const fresh = (): Bike => ({
@@ -20,8 +20,8 @@ const fresh = (): Bike => ({
 	air: false,
 	airtime: 0
 });
-const ride = (bike: Bike, c: Controls, seconds: number, surface: Surface = 'road') => {
-	for (let t = 0; t < seconds; t += 1 / 60) stepBike(bike, c, surface, 1 / 60);
+const ride = (bike: Bike, c: Controls, seconds: number) => {
+	for (let t = 0; t < seconds; t += 1 / 60) stepBike(bike, c, 1 / 60);
 };
 
 describe('stepBike', () => {
@@ -52,15 +52,32 @@ describe('stepBike', () => {
 	it('turns less sharply at speed', () => {
 		const slow = { ...fresh(), speed: 10 };
 		const fast = { ...fresh(), speed: 50 };
-		stepBike(slow, { throttle: 0, brake: 0, steer: 1 }, 'road', 0.1);
-		stepBike(fast, { throttle: 0, brake: 0, steer: 1 }, 'road', 0.1);
+		stepBike(slow, { throttle: 0, brake: 0, steer: 1 }, 0.1);
+		stepBike(fast, { throttle: 0, brake: 0, steer: 1 }, 0.1);
 		expect(Math.abs(fast.heading)).toBeLessThan(Math.abs(slow.heading));
 	});
 
-	it('is slower on grass', () => {
-		const bike = { ...fresh(), speed: 45 };
-		ride(bike, { throttle: 1, brake: 0, steer: 0 }, 5, 'grass');
-		expect(bike.speed).toBeLessThan(26);
+	it('glances off a wall back towards the road, keeping most of its speed', () => {
+		// A straight road along +z; heading 0.6 drifts left (+x), into the left wall.
+		const bike = { ...fresh(), speed: 40, heading: 0.6 };
+		glance(bike, 0, -1);
+		expect(bike.speed).toBeGreaterThan(30);
+		bike.speed = 10;
+		ride(bike, { throttle: 0, brake: 0, steer: 0 }, 1);
+		expect(bike.x).toBeLessThan(0);
+		expect(bike.z).toBeGreaterThan(5);
+	});
+
+	it('glances off the right wall back left, even riding the wrong way', () => {
+		const forwards = { ...fresh(), speed: 40, heading: -0.5 };
+		glance(forwards, 0, 1);
+		expect(forwards.heading).toBeGreaterThan(0);
+		// Heading -z, the road's right wall (-x) is on the rider's left.
+		const backwards = { ...fresh(), speed: 40, heading: Math.PI + 0.5 };
+		glance(backwards, 0, 1);
+		ride(backwards, { throttle: 0, brake: 0, steer: 0 }, 0.5);
+		expect(backwards.x).toBeGreaterThan(0);
+		expect(backwards.z).toBeLessThan(0);
 	});
 
 	it('slows itself for a hairpin with the gas held, without braking', () => {
