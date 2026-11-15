@@ -2,7 +2,7 @@
 // The page shows `hud` and calls start/pause; everything else happens here.
 import * as THREE from 'three';
 import { pace, stepRider, type Rider } from './ai.ts';
-import { stepBike, stepBody, type Bike, type Body } from './bike.ts';
+import { glance, stepBike, stepBody, type Bike, type Body } from './bike.ts';
 import { Input } from './input.ts';
 import { makeBike, type BikeModel } from './models.ts';
 import { LAPS, advance, lapsDone, order } from './race.ts';
@@ -18,7 +18,7 @@ import {
 	wrapAngle,
 	type Track
 } from './track.ts';
-import { buildWorld } from './world.ts';
+import { PAVEMENT, buildWorld } from './world.ts';
 
 export type Phase = 'menu' | 'countdown' | 'racing' | 'finished';
 
@@ -42,7 +42,6 @@ export interface Hud {
 }
 
 const COLOURS = [0xffd21f, 0xd8262e, 0x2f6fd6, 0x2bb673];
-const RUNOFF = 10;
 const COUNTDOWN = 3;
 const RECORD_KEY = 'race:best-lap';
 
@@ -94,7 +93,7 @@ export class Game {
 		this.renderer.shadowMap.enabled = true;
 		this.renderer.shadowMap.type = THREE.PCFShadowMap;
 
-		this.scene.add(new THREE.HemisphereLight(0xcfe8ff, 0x4f7a32, 1.4));
+		this.scene.add(new THREE.HemisphereLight(0xcfe8ff, 0x6b6f76, 1.4));
 		this.sun.position.set(60, 120, 40);
 		this.sun.castShadow = true;
 		this.sun.shadow.mapSize.set(1024, 1024);
@@ -238,19 +237,19 @@ export class Game {
 		const p = this.player;
 		const hud = this.hud;
 		const before = locate(this.track, p.x, p.z, p.index);
-		const c = hud.phase === 'racing' ? this.input.read(dt) : this.cruise(before.s, before.lateral);
-		const surface = Math.abs(before.lateral) > this.track.width / 2 + 0.6 ? 'grass' : 'road';
+		const c = hud.phase === 'racing' ? this.input.read(dt) : this.cruise(before.s);
 		const from = this.groundAt(before.s, before.lateral);
-		stepBike(p, c, surface, dt);
+		stepBike(p, c, dt);
 
 		let at = locate(this.track, p.x, p.z, p.index);
-		// The run-off ends in a barrier: scrape along it.
-		const limit = this.track.width / 2 + RUNOFF;
+		// The pavement ends in a wall, which turns the bike back onto the road.
+		const limit = this.track.width / 2 + PAVEMENT;
 		if (Math.abs(at.lateral) > limit) {
-			const back = pointAt(this.track, at.s, Math.sign(at.lateral) * limit);
+			const side = Math.sign(at.lateral);
+			const back = pointAt(this.track, at.s, side * limit);
 			p.x = back.x;
 			p.z = back.z;
-			p.speed *= 1 - 3 * dt;
+			glance(p, back.heading, side);
 			at = locate(this.track, p.x, p.z, at.index);
 		}
 
@@ -304,7 +303,7 @@ export class Game {
 	}
 
 	/** After the flag the bike rides itself round, back to the centre of the road. */
-	private cruise(s: number, lateral: number) {
+	private cruise(s: number) {
 		const p = this.player;
 		const ahead = pointAt(this.track, s + 8, 0);
 		const want = Math.atan2(ahead.x - p.x, ahead.z - p.z);
@@ -312,7 +311,7 @@ export class Game {
 		return {
 			throttle: p.speed < 20 ? 0.6 : 0,
 			brake: 0,
-			steer: Math.abs(lateral) > 40 ? 0 : steer
+			steer
 		};
 	}
 

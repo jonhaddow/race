@@ -23,7 +23,7 @@ describe('terrain', () => {
 		}
 	});
 
-	it('is level with the road across the run-off', () => {
+	it('is level with the road beside it', () => {
 		for (let s = 0; s < track.length; s += 53) {
 			const p = pointAt(track, s, ROAD_WIDTH / 2 + 8);
 			expect(Math.abs(roadHeight(track, s) - ground.height(p.x, p.z))).toBeLessThan(1.5);

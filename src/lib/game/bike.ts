@@ -1,6 +1,7 @@
 // The player's bike: arcade physics, tuned for fun over realism. Grip is high,
 // and steering harder than the grip allows scrubs speed off by itself, so corners
-// work with the gas held. Grass slows it down, but not much.
+// work with the gas held. Walls along the street turn it back onto the road.
+import { wrapAngle } from './track.ts';
 
 /** Up and down: riding over hills and flying off ramps. */
 export interface Body {
@@ -29,12 +30,8 @@ export interface Controls {
 	steer: number;
 }
 
-export type Surface = 'road' | 'grass';
-
 export const MAX_SPEED = 46; // ~165 km/h
 export const GRIP = 24; // lateral m/s² the tyres hold on the road
-const GRASS_GRIP = 16;
-const GRASS_MAX = 24;
 const ACCEL = 13;
 const BRAKE = 26;
 const MAX_YAW = 2;
@@ -43,18 +40,16 @@ const SCRUB = 20;
 /** Share of steering left in the air. */
 const AIR_STEER = 0.4;
 
-export function stepBike(bike: Bike, c: Controls, surface: Surface, dt: number) {
+export function stepBike(bike: Bike, c: Controls, dt: number) {
 	let v = bike.speed;
 	if (!bike.air) {
 		v += ACCEL * c.throttle * Math.max(0, 1 - (v / MAX_SPEED) ** 2) * dt;
 		v -= BRAKE * c.brake * dt;
 		if (!c.throttle) v -= (0.5 + 0.0004 * v * v) * dt;
-		if (surface === 'grass' && v > GRASS_MAX) v -= 14 * dt;
 	}
 
-	const grip = surface === 'road' ? GRIP : GRASS_GRIP;
 	const want = Math.abs(c.steer) * MAX_YAW;
-	const have = Math.min(MAX_YAW, grip / Math.max(v, 1));
+	const have = Math.min(MAX_YAW, GRIP / Math.max(v, 1));
 	if (!bike.air && want > have) v -= SCRUB * ((want - have) / want) * dt;
 	v = Math.max(0, v);
 
@@ -64,6 +59,25 @@ export function stepBike(bike: Bike, c: Controls, surface: Surface, dt: number) 
 	bike.x += Math.sin(bike.heading) * v * dt;
 	bike.z += Math.cos(bike.heading) * v * dt;
 	bike.lean = easeLean(bike.lean, bike.air ? 0 : v * yaw, dt);
+}
+
+/** Angle a bike leaves a wall at, back towards the road. */
+const GLANCE = 0.1;
+
+/**
+ * Hitting a wall that runs along `along` (a heading), on side `side` of the road
+ * (1 right, -1 left): the bike turns to run along it, angled slightly back into
+ * the road, and keeps the part of its speed along the wall (at least most of it),
+ * so a bump never stops it dead.
+ */
+export function glance(bike: Bike, along: number, side: number) {
+	const off = wrapAngle(bike.heading - along);
+	// Riding the wrong way round, it runs along the wall the other way.
+	const dir = Math.abs(off) > Math.PI / 2 ? -1 : 1;
+	const parallel = dir === 1 ? along : along + Math.PI;
+	bike.speed *= Math.max(0.75, Math.abs(Math.cos(off)));
+	// A higher heading turns left: away from a wall on the right going forwards.
+	bike.heading = wrapAngle(parallel + side * dir * GLANCE);
 }
 
 /** Moves the lean towards what a lateral acceleration of `lateral` (m/s², + right) needs. */

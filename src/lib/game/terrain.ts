@@ -34,10 +34,10 @@ export function terrain(track: Track): Terrain {
 			}
 			const d = Math.sqrt(nearest);
 			const road = sum / weights;
-			// Flat alongside the road (the run-off), rolling further out.
+			// Flat alongside the road (the pavement and the buildings' fronts), rolling further out.
 			const out = smoothstep(half + 12, half + 80, d);
-			// Just under the road and kerbs, so it never pokes through; level with
-			// them beyond, where bikes on the grass ride at the road's height.
+			// Just under the road, so it never pokes through; level with it beyond,
+			// where bikes on the pavement ride at the road's height.
 			const under = 0.35 * (1 - smoothstep(half + 1.2, half + 2.5, d));
 			return road * (1 - out) + rolling(x, z) * out - under;
 		}
