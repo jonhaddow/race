@@ -78,7 +78,6 @@ export function glance(bike: Bike, along: number, side: number) {
 	bike.speed *= Math.max(0.75, Math.abs(Math.cos(off)));
 	// A higher heading turns left: away from a wall on the right going forwards.
 	bike.heading = wrapAngle(parallel + side * dir * GLANCE);
-	bike.lean *= 0.5;
 }
 
 /** Moves the lean towards what a lateral acceleration of `lateral` (m/s², + right) needs. */

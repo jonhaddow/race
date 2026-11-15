@@ -187,7 +187,7 @@ function barriers(track: Track) {
 				const p = pointAt(track, s, side * lateral);
 				return [p.x, y, p.z];
 			};
-			// Inner face, top and back.
+			// Inner face and top.
 			const faces = [
 				[
 					corner(s0, w, y0 - 1),
@@ -200,12 +200,6 @@ function barriers(track: Track) {
 					corner(s1, w, y1 + height),
 					corner(s0, w + 0.6, y0 + height),
 					corner(s1, w + 0.6, y1 + height)
-				],
-				[
-					corner(s0, w + 0.6, y0 + height),
-					corner(s1, w + 0.6, y1 + height),
-					corner(s0, w + 0.6, y0 - 1),
-					corner(s1, w + 0.6, y1 - 1)
 				]
 			];
 			for (const [a, b, cc, d] of faces)
@@ -231,8 +225,10 @@ function barriers(track: Track) {
 /** Whether every point is at least `margin` metres beyond the road's edge. */
 function clearOfTrack(track: Track, points: { x: number; z: number }[], margin: number) {
 	const min = (track.width / 2 + margin) ** 2;
-	for (const p of track.points)
+	for (let i = 0; i < track.points.length; i += 2) {
+		const p = track.points[i];
 		for (const q of points) if ((p.x - q.x) ** 2 + (p.z - q.z) ** 2 < min) return false;
+	}
 	return true;
 }
 
@@ -276,7 +272,7 @@ function buildings(track: Track, land: Terrain) {
 	const pick = () => FACADES[Math.floor(rand() * FACADES.length)];
 	const front = track.width / 2 + PAVEMENT + 1.5;
 	// The grandstands line the left of the start straight.
-	const stands = (s: number) => s > track.length - 90 || s < 70;
+	const byStands = (s: number) => s > track.length - 90 || s < 70;
 
 	for (const side of [-1, 1]) {
 		let s = 0;
@@ -285,7 +281,7 @@ function buildings(track: Track, land: Terrain) {
 			const depth = 10 + rand() * 10;
 			const mid = s + width / 2;
 			s += width + rand() * 2;
-			if (side < 0 && stands(mid)) continue;
+			if (side < 0 && byStands(mid)) continue;
 			const p = pointAt(track, mid, side * (front + depth / 2));
 			const b = {
 				x: p.x,
@@ -384,6 +380,7 @@ function windows() {
 	tex.colorSpace = THREE.SRGBColorSpace;
 	return tex;
 }
+
 function stands(track: Track) {
 	const group = new THREE.Group();
 	const seats = new THREE.MeshLambertMaterial({ color: 0xc9ccd1 });
