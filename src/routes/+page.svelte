@@ -2,6 +2,7 @@
 	import type { Attachment } from 'svelte/attachments';
 	import type { Game, Hud } from '#lib/game/game.ts';
 	import { LAPS, formatTime } from '#lib/game/race.ts';
+	import { boardUrl, pickNameUrl, report, type Standing } from '#lib/board.ts';
 
 	let game: Game | undefined;
 	let hud = $state<Hud>();
@@ -9,6 +10,24 @@
 	let tilt = $state(false);
 	let portrait = $state(false);
 	let wakeLock: WakeLockSentinel | undefined;
+	/** Who's playing and where they stand on the shared board (null if it can't be reached). */
+	let standing = $state<Standing | null>(null);
+
+	/** Sends the best lap on this device (seconds) to the shared board, in milliseconds. */
+	async function sendBest(seconds: number | undefined) {
+		standing = (await report(seconds ? Math.round(seconds * 1000) : 0)) ?? standing;
+	}
+
+	// Also sends a best from before a name was picked, or from offline.
+	$effect(() => {
+		void sendBest(Number(localStorage.getItem('race:best-lap')) || undefined);
+	});
+
+	// And again at the end of each race.
+	let finished = $derived(hud?.phase === 'finished');
+	$effect(() => {
+		if (finished) void sendBest(hud?.bestLap);
+	});
 
 	// The game (three.js) only loads in the browser, after the page shows.
 	const mount: Attachment<HTMLCanvasElement> = (canvas) => {
@@ -126,6 +145,10 @@
 			{/if}
 		</p>
 		{#if hud?.bestLap}<p class="record">Best lap {formatTime(hud.bestLap)}</p>{/if}
+		<p class="board">
+			{#if standing?.player}Riding as {standing.player.name}.{/if}
+			<a href={boardUrl}>Leaderboard</a>
+		</p>
 	</section>
 {/if}
 
@@ -193,6 +216,11 @@
 			<dt>Best lap</dt>
 			<dd>{formatTime(hud.result.bestLap)}{hud.result.newRecord ? ' · record' : ''}</dd>
 		</dl>
+		{#if standing?.me}
+			<p class="rank">Number {standing.me.rank} on the <a href={boardUrl}>leaderboard</a></p>
+		{:else if standing && !standing.player}
+			<p class="rank"><a href={pickNameUrl()}>Pick a name for the leaderboard</a></p>
+		{/if}
 		<button class="go" onclick={start}>Race again</button>
 		<button class="ghost" onclick={quit}>Menu</button>
 	</section>

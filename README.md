@@ -7,7 +7,7 @@ A 3D motorbike racing game that runs in the browser. Three laps of a hilly 2 km 
 - **Phone:** turn it sideways and tilt it like a steering wheel. Hold **Gas** on the right and **Brake** on the left. Where tilt isn't available, steering buttons appear instead.
 - **Keyboard:** arrows or WASD, Space to brake, Esc to pause, Enter to start.
 
-Your best lap is saved on the device. Add it to your home screen to play it full screen.
+Your best lap is saved on the device and goes on a shared leaderboard in the [games launcher](https://github.com/jonhaddow/games), under a name you pick there. Add it to your home screen to play it full screen.
 
 ## Tech stack
 

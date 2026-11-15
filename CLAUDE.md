@@ -1,6 +1,6 @@
 # Race
 
-A 3D motorbike racing game at https://race.app.haddow.me: three.js in a SvelteKit page. Unlike the other apps it has no sign-in, D1, push or service worker. It's a public game, and the best lap lives in `localStorage`.
+A 3D motorbike racing game at https://race.app.haddow.me: three.js in a SvelteKit page. Unlike the other apps it has no sign-in, D1, push or service worker. It's a public game, and the best lap lives in `localStorage`. It's also sent to the shared leaderboard in the games launcher (`~/code/games`, `src/lib/board.ts`), in milliseconds, on load and after each race. The launcher hands over the player's id as `#profile=<id>` in its links, kept in `localStorage` (`games-profile`).
 
 ## Worth knowing
 

@@ -22,3 +22,24 @@ test('starts a race, counts down and rides off with the gas held', async ({ page
 	await expect(start).toBeVisible();
 	expect(errors).toEqual([]);
 });
+
+test('sends the best lap to the shared board and links to it', async ({ page }) => {
+	const sent: number[] = [];
+	await page.route('https://games.app.haddow.me/api/scores/race', async (route) => {
+		const body = route.request().postDataJSON() as { value: number } | null;
+		if (body) sent.push(body.value);
+		expect(route.request().headers()['x-games-profile']).toBe('p-alex');
+		await route.fulfill({
+			json: { player: { name: 'Alex', colour: '#3a86ff' }, me: null, rows: [] }
+		});
+	});
+	await page.addInitScript(() => localStorage.setItem('race:best-lap', '71.234'));
+	// The launcher's links hand the game the player's id.
+	await page.goto('/#profile=p-alex');
+	await expect(page.getByText('Riding as Alex.')).toBeVisible();
+	await expect(page.getByRole('link', { name: 'Leaderboard' })).toHaveAttribute(
+		'href',
+		'https://games.app.haddow.me/boards/race'
+	);
+	expect(sent).toEqual([71234]);
+});
