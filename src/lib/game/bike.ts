@@ -117,7 +117,9 @@ export function stepBody(b: Body, from: number, to: number, dt: number) {
 	b.airtime += dt;
 	if (b.y > to) return false;
 	b.y = to;
-	b.vy = 0;
+	// Moving with the ground, as when riding on it: 0 would read as a sudden drop
+	// on a downhill and bounce the bike down it.
+	b.vy = Math.min((to - from) / dt, MAX_CLIMB);
 	b.air = false;
 	return true;
 }

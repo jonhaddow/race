@@ -125,4 +125,21 @@ describe('stepBody', () => {
 		expect(b.airtime).toBeGreaterThan(0.9);
 		expect(b.y).toBe(0);
 	});
+
+	it('stays on a downhill after landing on it, instead of bouncing down it', () => {
+		const b = body();
+		b.y = 3;
+		b.air = true;
+		// A hill dropping 5 m/s under the wheels (about 12% at 40 m/s).
+		const h = (i: number) => -5 * (i / 60);
+		let takeoffs = 0;
+		let landed = false;
+		for (let i = 1; i <= 180; i++) {
+			const wasAir = b.air;
+			if (stepBody(b, h(i - 1), h(i), 1 / 60)) landed = true;
+			if (landed && !wasAir && b.air) takeoffs++;
+		}
+		expect(landed).toBe(true);
+		expect(takeoffs).toBe(0);
+	});
 });
